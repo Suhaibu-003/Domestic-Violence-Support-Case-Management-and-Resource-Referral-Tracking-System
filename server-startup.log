@@ -1,0 +1,5 @@
+◇ injected env (3) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+Initializing SAHAYA database with demo data...
+SAHAYA database initialized with admin, organizations, resources, survivors, and cases
+✓ MongoDB Connected
+✓ SAHAYA Backend running on port 5000
