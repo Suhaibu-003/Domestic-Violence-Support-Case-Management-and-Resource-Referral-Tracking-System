@@ -85,7 +85,7 @@ export default function RegisterOrg() {
             <input
               type="text"
               required
-              placeholder="e.g. Sarah M"
+              placeholder="Enter your full name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"

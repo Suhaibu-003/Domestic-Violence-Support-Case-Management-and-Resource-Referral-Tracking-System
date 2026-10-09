@@ -40,7 +40,7 @@ export default function RegisterSurvivor() {
             <input
               type="text"
               required
-              placeholder="e.g. Priya R"
+              placeholder="Enter your full name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -51,7 +51,7 @@ export default function RegisterSurvivor() {
             <label className="block font-semibold text-slate-700 mb-1">Display Alias (Shown to Organizations)</label>
             <input
               type="text"
-              placeholder="e.g. Survivor_Chennai01"
+              placeholder="Enter a secret nickname/alias for privacy"
               value={formData.alias}
               onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"

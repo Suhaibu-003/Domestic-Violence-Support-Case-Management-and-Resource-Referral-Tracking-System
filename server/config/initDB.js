@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Case from "../models/Case.js";
 import Resource from "../models/Resource.js";
+import { resourceData } from "../seeds/resourceData.js";
 
 const DISTRICTS = [
   "Chennai",
@@ -77,23 +78,25 @@ const SURVIVORS = [
   }
 ];
 
-const resourceForOrganization = (organization) => ({
-  name: organization.organizationName,
-  type: organization.orgType,
-  location: organization.location,
-  services: [`${organization.orgType} crisis response`, "Case Management & Direct Handoff"],
-  languages: ["Tamil", "English"],
-  availability: "Available",
-  availableBeds: organization.orgType === "SHELTER" ? 10 : organization.orgType === "HOSPITAL" ? 15 : 0,
-  verifiedContact: organization.phone,
-  operatingHours: "24/7 Support",
-  isVerified: true
-});
-
 export async function autoInitializeDB() {
   const existingAdmin = await User.findOne({ role: "ADMIN" });
 
   if (existingAdmin) {
+    const seededResources = await Resource.find(
+      { $or: resourceData.map(({ name, location }) => ({ name, location })) },
+      { name: 1, location: 1 }
+    );
+    const seededResourceKeys = new Set(
+      seededResources.map(({ name, location }) => `${location}:${name}`)
+    );
+    const resourcesToSeed = resourceData.filter(
+      (resource) => !seededResourceKeys.has(`${resource.location}:${resource.name}`)
+    );
+
+    if (resourcesToSeed.length > 0) {
+      await Resource.insertMany(resourcesToSeed);
+    }
+
     console.log("Database already initialized");
     return;
   }
@@ -111,7 +114,7 @@ export async function autoInitializeDB() {
   });
 
   const organizationPasswordHash = await bcrypt.hash("org123", 10);
-  const organizations = await User.insertMany(
+  await User.insertMany(
     DISTRICTS.map((district, index) => ({
       name: `${district} ${ORGANIZATION_TYPES[index]} Support Centre`,
       email: `demo.${district.toLowerCase()}@sahaya.org`,
@@ -125,7 +128,7 @@ export async function autoInitializeDB() {
     }))
   );
 
-  await Resource.insertMany(organizations.map(resourceForOrganization));
+  await Resource.insertMany(resourceData);
 
   const survivorPasswordHash = await bcrypt.hash("survivor123", 10);
   const survivors = await User.insertMany(
