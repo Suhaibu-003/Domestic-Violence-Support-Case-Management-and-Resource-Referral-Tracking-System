@@ -22,7 +22,10 @@ const getNextCaseId = async () => {
 // 1. SURVIVOR REGISTRATION (Auto-generates Case File)
 router.post("/register/survivor", async (req, res) => {
   try {
-    const { name, alias, email, phone, password, location, preferredLanguage, initialNeeds } = req.body;
+    const { name, alias, email, phone, password, location, preferredLanguage, initialNeeds, situationNote } = req.body;
+    if (!situationNote?.trim()) {
+      return res.status(400).json({ success: false, message: "A brief situation or needs note is required" });
+    }
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -53,8 +56,18 @@ router.post("/register/survivor", async (req, res) => {
       urgency: "IMMEDIATE",
       needs: initialNeeds || ["SHELTER"],
       location: user.location,
-      incidentSummary: "Self-registered crisis report. Awaiting OSC caseworker triage.",
-      status: "OPEN"
+      incidentSummary: situationNote.trim(),
+      status: "OPEN",
+      stage: "OPEN",
+      stageHistory: [{
+        stage: "OPEN",
+        updatedBy: "Survivor",
+        note: situationNote.trim()
+      }],
+      timeline: [{
+        title: "Request Received",
+        description: situationNote.trim()
+      }]
     });
 
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
@@ -77,9 +90,12 @@ router.post("/register/survivor", async (req, res) => {
 });
 
 // 2. ORGANIZATION REGISTRATION (Pending Verification)
-router.post("/register/org", async (req, res) => {
+const registerOrganization = async (req, res) => {
   try {
-    const { name, email, phone, password, role, orgType, organizationName, location } = req.body;
+    const {
+      name, email, phone, password, role, orgType, organizationName, location,
+      barCouncilEnrollmentNumber, specialization
+    } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -98,7 +114,9 @@ router.post("/register/org", async (req, res) => {
       password: hashedPassword,
       role: "ORGANIZATION",
       orgType: mappedOrgType,
-      organizationName,
+      organizationName: organizationName || (mappedOrgType === "LAWYER" ? `${name} Legal Aid` : organizationName),
+      barCouncilEnrollmentNumber: mappedOrgType === "LAWYER" ? barCouncilEnrollmentNumber : undefined,
+      specialization: mappedOrgType === "LAWYER" ? specialization : undefined,
       location: location || "Chennai",
       status: "PENDING"
     });
@@ -112,10 +130,25 @@ router.post("/register/org", async (req, res) => {
         status: user.status
       }
     });
+
   } catch (err) {
     console.error("Org registration error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+router.post("/register/org", registerOrganization);
+
+router.post("/register/lawyer", async (req, res) => {
+  const { name, email, phone, password, location, barCouncilEnrollmentNumber, specialization } = req.body;
+  if (!name || !email || !phone || !password || !location || !barCouncilEnrollmentNumber || !specialization) {
+    return res.status(400).json({ success: false, message: "All lawyer registration fields are required" });
+  }
+
+  req.body.role = "ORGANIZATION";
+  req.body.orgType = "LAWYER";
+  req.body.organizationName = `${name} Legal Aid`;
+  return registerOrganization(req, res);
 });
 
 // 3. UNIFIED USER / ORG / ADMIN LOGIN

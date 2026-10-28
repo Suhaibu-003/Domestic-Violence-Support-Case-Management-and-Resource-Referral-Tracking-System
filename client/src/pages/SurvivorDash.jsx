@@ -98,6 +98,10 @@ export default function SurvivorDash() {
     navigate("/login");
   };
 
+  const caseStage = caseData?.stage || caseData?.status || "OPEN";
+  const progressByStage = { OPEN: 25, TRIAGED: 50, IN_ACTION: 75, RESOLVED: 100 };
+  const progress = progressByStage[caseStage] || 25;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       <header className="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center max-w-5xl mx-auto">
@@ -175,7 +179,7 @@ export default function SurvivorDash() {
                     <h2 className="text-2xl font-mono font-bold text-slate-900">{caseData.caseId}</h2>
                   </div>
                   <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-md text-xs font-semibold">
-                    Status: {caseData.status}
+                    Status: {caseStage}
                   </span>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-100 flex gap-4 text-xs text-slate-500">
@@ -188,23 +192,23 @@ export default function SurvivorDash() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-slate-900 text-sm">Case Progress</h3>
                   <span className="text-xs font-bold text-indigo-700">
-                    {({ OPEN: 25, TRIAGED: 50, IN_ACTION: 75, RESOLVED: 100 })[caseData.status] || 25}% complete
+                    {progress}% complete
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={({ OPEN: 25, TRIAGED: 50, IN_ACTION: 75, RESOLVED: 100 })[caseData.status] || 25}>
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
                   <div
                     className="h-full bg-indigo-600 rounded-full transition-all"
-                    style={{ width: `${({ OPEN: 25, TRIAGED: 50, IN_ACTION: 75, RESOLVED: 100 })[caseData.status] || 25}%` }}
+                    style={{ width: `${progress}%` }}
                   />
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { status: "OPEN", label: "Report Received", percent: "25%" },
+                    { status: "OPEN", label: "Request Received", percent: "25%" },
                     { status: "TRIAGED", label: "Caseworker Triaged", percent: "50%" },
-                    { status: "IN_ACTION", label: "Services Dispatched", percent: "75%" },
-                    { status: "RESOLVED", label: "Resolved & Secured", percent: "100%" }
+                    { status: "IN_ACTION", label: "Help Dispatched / Mapped", percent: "75%" },
+                    { status: "RESOLVED", label: "Resolved & Safe", percent: "100%" }
                   ].map((step, index) => {
-                    const currentStep = ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"].indexOf(caseData.status);
+                    const currentStep = ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"].indexOf(caseStage);
                     const isReached = index <= currentStep;
                     return (
                       <div key={step.status} className={`rounded-lg border p-3 ${isReached ? "border-indigo-200 bg-indigo-50" : "border-slate-200 bg-white"}`}>
@@ -214,6 +218,46 @@ export default function SurvivorDash() {
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Assigned Resources</h3>
+                  <p className="mt-1 text-xs text-slate-500">Direct contacts mapped to your support case.</p>
+                </div>
+                {caseData.assignedResources?.length ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {caseData.assignedResources.map(({ resourceId, resourceModel }, index) => {
+                      if (!resourceId) return null;
+                      const isLawyer = resourceModel === "User" || resourceId.role === "ORGANIZATION";
+                      const contactPhone = resourceId.phone || resourceId.verifiedContact;
+                      const displayName = isLawyer
+                        ? resourceId.name || resourceId.organizationName
+                        : resourceId.name;
+                      const category = isLawyer
+                        ? `Lawyer${resourceId.specialization ? ` · ${resourceId.specialization}` : ""}`
+                        : resourceId.type;
+                      return (
+                        <article key={resourceId._id || index} className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <h4 className="text-xs font-bold text-slate-900">{displayName}</h4>
+                            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-indigo-700">{category}</span>
+                          </div>
+                          <p className="mt-2 text-xs text-slate-600">{resourceId.location || caseData.location}</p>
+                          {contactPhone ? (
+                            <a href={`tel:${contactPhone.replace(/[^\d+]/g, "")}`} className="mt-2 inline-block text-xs font-semibold text-indigo-700 hover:underline">
+                              Call {contactPhone}
+                            </a>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-500">Contact details are not listed.</p>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">No resources have been mapped to your case yet.</p>
+                )}
               </section>
 
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">

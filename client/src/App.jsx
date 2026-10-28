@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import RegisterSurvivor from "./pages/RegisterSurvivor";
 import RegisterOrg from "./pages/RegisterOrg";
+import RegisterLawyer from "./pages/RegisterLawyer";
 
 import AdminDash from "./pages/AdminDash";
 import SurvivorDash from "./pages/SurvivorDash";
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register-survivor" element={<RegisterSurvivor />} />
         <Route path="/register-org" element={<RegisterOrg />} />
+        <Route path="/register-lawyer" element={<RegisterLawyer />} />
 
         {/* 1. ADMIN DESK */}
         <Route

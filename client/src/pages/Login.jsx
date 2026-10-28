@@ -22,6 +22,8 @@ export default function Login() {
           navigate("/admin/dashboard");
         } else if (role === "SURVIVOR") {
           navigate("/survivor/dashboard");
+        } else if (role === "ORGANIZATION" && res.data.user.orgType === "LAWYER") {
+          navigate("/lawyer/dashboard");
         } else if (role === "ORGANIZATION") {
           navigate("/organization/dashboard");
         } else if (role === "CASEWORKER") {
@@ -49,6 +51,7 @@ export default function Login() {
             <input
               type="email"
               required
+              placeholder="Enter your official or contact email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -60,6 +63,7 @@ export default function Login() {
             <input
               type="password"
               required
+              placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -78,6 +82,10 @@ export default function Login() {
           <Link to="/register-survivor" className="text-indigo-700 hover:underline">Survivor Sign Up</Link>
           <Link to="/register-org" className="text-indigo-700 hover:underline">Org Sign Up</Link>
         </div>
+        <p className="mt-3 text-center text-xs text-slate-500">
+          Are you a legal professional?{" "}
+          <Link to="/register-lawyer" className="font-semibold text-indigo-700 hover:underline">Lawyer onboarding</Link>
+        </p>
       </div>
     </div>
   );

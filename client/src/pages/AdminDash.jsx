@@ -1,17 +1,31 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Trash2, AlertCircle } from "lucide-react";
+import { AlertCircle, Trash2, X } from "lucide-react";
+
+const API_URL = "http://localhost:5000/api/admin";
+const DISTRICTS = [
+  "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem",
+  "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"
+];
+const ASSIGNABLE_TYPES = ["SHELTER", "HOSPITAL", "LAWYER"];
+const STAGES = ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"];
+
+const getResourceName = (resource) => resource?.name || resource?.organizationName || "Assigned support";
+const authConfig = () => ({
+  headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+});
 
 export default function AdminDash() {
-  const [activeTab, setActiveTab] = useState("ORGS"); // SURVIVORS | ORGS | RESOURCES
+  const [activeTab, setActiveTab] = useState("CASES");
   const [stats, setStats] = useState({ survivors: 0, organizations: 0, pendingOrgs: 0, activeCases: 0, resources: 0 });
-  const [survivors, setSurvivors] = useState([]);
+  const [cases, setCases] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [resources, setResources] = useState([]);
   const [selectedDistrict, setSelectedDistrict] = useState("ALL");
-  const [rejectingOrg, setRejectingOrg] = useState(null); // stores org object to reject
+  const [assigningCase, setAssigningCase] = useState(null);
+  const [selectedResourceIds, setSelectedResourceIds] = useState([]);
+  const [rejectingOrg, setRejectingOrg] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
-
   const [newResource, setNewResource] = useState({
     name: "",
     type: "SHELTER",
@@ -22,21 +36,17 @@ export default function AdminDash() {
   });
 
   const loadData = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
-
     try {
-      const [statsRes, survRes, orgRes, resRes] = await Promise.all([
-        axios.get("http://localhost:5000/api/admin/stats", { headers }),
-        axios.get("http://localhost:5000/api/admin/survivors", { headers }),
-        axios.get("http://localhost:5000/api/admin/organizations", { headers }),
-        axios.get("http://localhost:5000/api/admin/resources", { headers })
+      const [statsRes, casesRes, orgRes, resourcesRes] = await Promise.all([
+        axios.get(`${API_URL}/stats`, authConfig()),
+        axios.get(`${API_URL}/survivors`, authConfig()),
+        axios.get(`${API_URL}/organizations`, authConfig()),
+        axios.get(`${API_URL}/resources`, authConfig())
       ]);
-
       setStats(statsRes.data.data);
-      setSurvivors(survRes.data.data);
+      setCases(casesRes.data.data);
       setOrganizations(orgRes.data.data);
-      setResources(resRes.data.data);
+      setResources(resourcesRes.data.data);
     } catch (err) {
       console.error("Admin data fetch error:", err);
     }
@@ -44,495 +54,450 @@ export default function AdminDash() {
 
   useEffect(() => {
     let isSubscribed = true;
-
     const fetchInitialData = async () => {
-      const token = localStorage.getItem("token");
-      const headers = { Authorization: `Bearer ${token}` };
-
       try {
-        const [statsRes, survRes, orgRes, resRes] = await Promise.all([
-          axios.get("http://localhost:5000/api/admin/stats", { headers }),
-          axios.get("http://localhost:5000/api/admin/survivors", { headers }),
-          axios.get("http://localhost:5000/api/admin/organizations", { headers }),
-          axios.get("http://localhost:5000/api/admin/resources", { headers })
+        const [statsRes, casesRes, orgRes, resourcesRes] = await Promise.all([
+          axios.get(`${API_URL}/stats`, authConfig()),
+          axios.get(`${API_URL}/survivors`, authConfig()),
+          axios.get(`${API_URL}/organizations`, authConfig()),
+          axios.get(`${API_URL}/resources`, authConfig())
         ]);
-
         if (isSubscribed) {
           setStats(statsRes.data.data);
-          setSurvivors(survRes.data.data);
+          setCases(casesRes.data.data);
           setOrganizations(orgRes.data.data);
-          setResources(resRes.data.data);
+          setResources(resourcesRes.data.data);
         }
       } catch (err) {
-        console.error("Initial load error:", err);
+        console.error("Initial admin data fetch error:", err);
       }
     };
-
     fetchInitialData();
-
     return () => {
       isSubscribed = false;
     };
   }, []);
 
-  const handleApproveOrg = async (id) => {
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
+  const filteredResources = useMemo(() => selectedDistrict === "ALL"
+    ? resources
+    : resources.filter((resource) => resource.location?.toLowerCase() === selectedDistrict.toLowerCase()),
+  [resources, selectedDistrict]);
+  const activeCases = useMemo(
+    () => cases.filter((caseItem) => (caseItem.stage || caseItem.status) !== "RESOLVED"),
+    [cases]
+  );
 
+  const assignableResources = useMemo(() => {
+    if (!assigningCase) return [];
+    return resources.filter((resource) =>
+      resource.location?.toLowerCase() === assigningCase.location?.toLowerCase() &&
+      ASSIGNABLE_TYPES.includes(resource.type) &&
+      resource.isVerified !== false
+    );
+  }, [assigningCase, resources]);
+
+  const handleStageChange = async (caseItem, stage) => {
     try {
-      await axios.patch(`http://localhost:5000/api/admin/organizations/${id}/verify`, { status: "APPROVED" }, { headers });
-      loadData();
+      await axios.patch(`${API_URL}/cases/${caseItem._id}/stage`, { stage }, authConfig());
+      await loadData();
     } catch (err) {
-      alert("Approval failed: " + err.message);
+      alert("Case stage update failed: " + (err.response?.data?.message || err.message));
     }
   };
 
-  const handleCaseStatusChange = async (caseId, status) => {
-    const token = localStorage.getItem("token");
+  const handleAssignResources = async () => {
+    if (!assigningCase || selectedResourceIds.length === 0) return;
     try {
-      const res = await axios.patch(
-        `http://localhost:5000/api/admin/cases/${caseId}/status`,
-        { status },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await axios.patch(
+        `${API_URL}/cases/${assigningCase._id}/assign-resource`,
+        { resourceIds: selectedResourceIds, stage: "IN_ACTION" },
+        authConfig()
       );
-      setSurvivors((current) => current.map((item) => item._id === caseId
-        ? { ...res.data.data, survivorId: item.survivorId }
-        : item));
+      setAssigningCase(null);
+      setSelectedResourceIds([]);
+      await loadData();
     } catch (err) {
-      alert("Case status update failed: " + (err.response?.data?.message || err.message));
+      alert("Resource assignment failed: " + (err.response?.data?.message || err.message));
     }
   };
 
-  const handleConfirmReject = async (e) => {
-    e.preventDefault();
+  const handleApproveOrg = async (id) => {
+    try {
+      await axios.patch(`${API_URL}/organizations/${id}/verify`, { status: "APPROVED" }, authConfig());
+      await loadData();
+    } catch (err) {
+      alert("Approval failed: " + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleConfirmReject = async (event) => {
+    event.preventDefault();
     if (!rejectionReason.trim()) {
       alert("Please provide a reason for rejecting this application.");
       return;
     }
-
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
-
     try {
       await axios.patch(
-        `http://localhost:5000/api/admin/organizations/${rejectingOrg._id}/verify`,
+        `${API_URL}/organizations/${rejectingOrg._id}/verify`,
         { status: "REJECTED", rejectionReason },
-        { headers }
+        authConfig()
       );
       setRejectingOrg(null);
       setRejectionReason("");
-      loadData();
+      await loadData();
     } catch (err) {
-      alert("Rejection failed: " + err.message);
+      alert("Rejection failed: " + (err.response?.data?.message || err.message));
     }
   };
 
-  const handleCreateResource = async (e) => {
-    e.preventDefault();
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
-
+  const handleCreateResource = async (event) => {
+    event.preventDefault();
     try {
-      await axios.post("http://localhost:5000/api/admin/resources", newResource, { headers });
-      setNewResource({ name: "", type: "SHELTER", location: "Chennai", verifiedContact: "", availableBeds: 0, services: [] });
-      loadData();
+      await axios.post(`${API_URL}/resources`, newResource, authConfig());
+      setNewResource({
+        name: "",
+        type: "SHELTER",
+        location: "Chennai",
+        verifiedContact: "",
+        availableBeds: 0,
+        services: ["Emergency Support"]
+      });
+      await loadData();
     } catch (err) {
-      alert("Failed to add resource: " + err.message);
+      alert("Failed to add resource: " + (err.response?.data?.message || err.message));
     }
   };
 
   const handleDeleteResource = async (id) => {
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
-
     try {
-      await axios.delete(`http://localhost:5000/api/admin/resources/${id}`, { headers });
-      loadData();
+      await axios.delete(`${API_URL}/resources/${id}`, authConfig());
+      await loadData();
     } catch (err) {
-      alert("Failed to delete resource: " + err.message);
+      alert("Failed to delete resource: " + (err.response?.data?.message || err.message));
     }
   };
 
-  const filteredResources = selectedDistrict === "ALL" 
-    ? resources 
-    : resources.filter((r) => r.location.toLowerCase() === selectedDistrict.toLowerCase());
+  const toggleResource = (resourceId) => {
+    setSelectedResourceIds((selected) => selected.includes(resourceId)
+      ? selected.filter((id) => id !== resourceId)
+      : [...selected, resourceId]);
+  };
 
-  const categoryGroups = [
-    { title: "Emergency Shelters", icon: "🏠", type: "SHELTER", badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200", items: filteredResources.filter((r) => r.type === "SHELTER") },
-    { title: "Hospitals & Trauma Care Desks", icon: "🏥", type: "HOSPITAL", badgeColor: "bg-rose-50 text-rose-700 border-rose-200", items: filteredResources.filter((r) => r.type === "HOSPITAL") },
-    { title: "NGOs & One Stop Crisis Centres", icon: "🤝", type: "NGO", badgeColor: "bg-amber-50 text-amber-700 border-amber-200", items: filteredResources.filter((r) => r.type === "NGO") },
-    { title: "Legal Aid & Defense Clinics", icon: "⚖️", type: "LAWYER", badgeColor: "bg-blue-50 text-blue-700 border-blue-200", items: filteredResources.filter((r) => r.type === "LAWYER") },
-    { title: "Crisis Counselling & Mental Well-being", icon: "🧠", type: "COUNSELLING", badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200", items: filteredResources.filter((r) => r.type === "COUNSELLING") }
-  ];
+  const openAssignment = (caseItem) => {
+    setAssigningCase(caseItem);
+    setSelectedResourceIds([]);
+  };
+
+  const signOut = () => {
+    localStorage.clear();
+    window.location.href = "/login";
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">SAHAYA Central Administration</h1>
-          <p className="text-xs text-slate-500">Platform Control, Organization Verification & Resource Directory</p>
+          <h1 className="text-lg font-bold text-slate-900">SAHAYA Administration</h1>
+          <p className="text-xs text-slate-500">Statewide case coordination and verified aid directory</p>
         </div>
-        <button
-          onClick={() => { localStorage.clear(); window.location.href = "/login"; }}
-          className="text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-        >
+        <button onClick={signOut} className="text-xs font-semibold text-slate-600 hover:text-slate-900">
           Sign Out
         </button>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Metric Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs text-slate-500">Registered Survivors</span>
-            <h3 className="text-2xl font-bold text-slate-900 mt-1">{stats.survivors}</h3>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs text-slate-500">Active Organizations</span>
-            <h3 className="text-2xl font-bold text-indigo-700 mt-1">{stats.organizations}</h3>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs text-slate-500">Pending Approvals</span>
-            <h3 className="text-2xl font-bold text-amber-600 mt-1">{organizations.length}</h3>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs text-slate-500">Active Cases</span>
-            <h3 className="text-2xl font-bold text-rose-600 mt-1">{stats.activeCases}</h3>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs text-slate-500">Mapped Resources</span>
-            <h3 className="text-2xl font-bold text-emerald-700 mt-1">{stats.resources}</h3>
-          </div>
-        </div>
+      <main className="mx-auto max-w-7xl space-y-6 p-6">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {[
+            ["Survivors", stats.survivors],
+            ["Approved Organizations", stats.organizations],
+            ["Pending Approvals", stats.pendingOrgs],
+            ["Active Cases", stats.activeCases],
+            ["Directory Entries", stats.resources]
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs text-slate-500">{label}</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+            </div>
+          ))}
+        </section>
 
-        <div className="flex flex-wrap items-center gap-2" aria-label="Cases by district">
-          <span className="text-xs font-semibold text-slate-600">District case tally:</span>
-          {["Chennai", "Coimbatore", "Erode", "Madurai", "Salem", "Tiruchirappalli", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"].map((district) => {
-            const count = survivors.filter((item) => item.location?.toLowerCase() === district.toLowerCase()).length;
-            return (
-              <span key={district} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-[11px] text-slate-700">
-                {district}: <strong>{count}</strong>
-              </span>
-            );
-          })}
-        </div>
+        <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 text-xs font-semibold">
+          {[
+            ["CASES", `Cases & Aid Directory (${activeCases.length})`],
+            ["APPROVALS", `Pending Approvals (${organizations.length})`]
+          ].map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-lg px-4 py-2 ${activeTab === tab ? "bg-indigo-700 text-white" : "border border-slate-200 bg-white text-slate-600"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        {/* Tab Switcher */}
-        <div className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-semibold">
-          <button
-            onClick={() => setActiveTab("SURVIVORS")}
-            className={`px-4 py-2 rounded-lg transition ${activeTab === "SURVIVORS" ? "bg-indigo-700 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
-          >
-            Manage Survivors ({survivors.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("ORGS")}
-            className={`px-4 py-2 rounded-lg transition ${activeTab === "ORGS" ? "bg-indigo-700 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
-          >
-            Pending Approvals ({organizations.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("RESOURCES")}
-            className={`px-4 py-2 rounded-lg transition ${activeTab === "RESOURCES" ? "bg-indigo-700 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
-          >
-            Resource Mapping ({resources.length})
-          </button>
-        </div>
-
-        {/* TAB 1: MANAGE SURVIVORS */}
-        {activeTab === "SURVIVORS" && (
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                <tr>
-                  <th className="p-3.5">Case ID</th>
-                  <th className="p-3.5">Survivor Alias</th>
-                  <th className="p-3.5">Location</th>
-                  <th className="p-3.5">Assistance Needs</th>
-                  <th className="p-3.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {survivors.map((c) => (
-                  <tr key={c._id}>
-                    <td className="p-3.5 font-mono font-bold text-slate-900">{c.caseId}</td>
-                    <td className="p-3.5 text-slate-700">{c.survivorId?.alias || "Protected User"}</td>
-                    <td className="p-3.5">{c.location}</td>
-                    <td className="p-3.5">{c.needs?.join(", ")}</td>
-                    <td className="p-3.5">
-                      <select
-                        value={c.status}
-                        onChange={(e) => handleCaseStatusChange(c._id, e.target.value)}
-                        aria-label={`Update status for ${c.caseId}`}
-                        className="px-2 py-1 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                      >
-                        <option value="OPEN">OPEN</option>
-                        <option value="TRIAGED">TRIAGED</option>
-                        <option value="IN_ACTION">IN_ACTION</option>
-                        <option value="RESOLVED">RESOLVED</option>
-                      </select>
-                    </td>
+        {activeTab === "CASES" && (
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 p-4">
+              <h2 className="text-sm font-bold text-slate-900">Active Cases & Quick Assignment</h2>
+              <p className="mt-1 text-xs text-slate-500">Assign verified district facilities or an approved pro-bono lawyer.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[740px] text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="p-3.5">Case ID</th>
+                    <th className="p-3.5">District</th>
+                    <th className="p-3.5">Needs</th>
+                    <th className="p-3.5">Stage</th>
+                    <th className="p-3.5">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activeCases.map((item) => {
+                    const stage = item.stage || item.status || "OPEN";
+                    return (
+                      <tr key={item._id} className="align-top hover:bg-slate-50/60">
+                        <td className="p-3.5 font-mono font-bold text-slate-900">{item.caseId}</td>
+                        <td className="p-3.5">{item.location}</td>
+                        <td className="p-3.5">{item.needs?.join(", ") || "Not specified"}</td>
+                        <td className="p-3.5">
+                          <select
+                            value={stage}
+                            onChange={(event) => handleStageChange(item, event.target.value)}
+                            aria-label={`Update stage for ${item.caseId}`}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold"
+                          >
+                            {STAGES.map((value) => <option key={value} value={value}>{value}</option>)}
+                          </select>
+                          {item.assignedResources?.length > 0 && (
+                            <p className="mt-1 max-w-48 text-[10px] text-slate-500">
+                              {item.assignedResources.map(({ resourceId }) => getResourceName(resourceId)).join(", ")}
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-3.5">
+                          {stage !== "RESOLVED" && (
+                            <button
+                              onClick={() => openAssignment(item)}
+                              className="rounded-lg bg-indigo-700 px-3 py-1.5 font-semibold text-white hover:bg-indigo-800"
+                            >
+                              Assign Aid
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {activeCases.length === 0 && (
+                    <tr><td colSpan="5" className="p-8 text-center text-slate-500">No cases are registered yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         )}
 
-        {/* TAB 2: PENDING ORGANIZATIONS ONLY */}
-        {activeTab === "ORGS" && (
-          <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-              {organizations.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500">
-                  No pending organization applications at this time.
+        {activeTab === "CASES" && (
+          <section className="space-y-4">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Unified Aid Directory</h2>
+                  <p className="mt-1 text-xs text-slate-500">Verified facilities and approved legal aid contacts.</p>
                 </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  District
+                  <select
+                    value={selectedDistrict}
+                    onChange={(event) => setSelectedDistrict(event.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
+                  >
+                    <option value="ALL">All Districts</option>
+                    {DISTRICTS.map((district) => <option key={district} value={district}>{district}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      <th className="p-3.5">Organization Name</th>
+                      <th className="p-3.5">Facility / Lawyer Name</th>
+                      <th className="p-3.5">Category</th>
+                      <th className="p-3.5">District</th>
+                      <th className="p-3.5">Contact Phone</th>
+                      <th className="p-3.5">Availability</th>
+                      <th className="p-3.5 text-right">Manage</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredResources.map((resource) => (
+                      <tr key={`${resource.sourceModel || "Resource"}-${resource._id}`} className="hover:bg-slate-50/60">
+                        <td className="p-3.5 font-semibold text-slate-900">{resource.name || resource.organizationName}</td>
+                        <td className="p-3.5">
+                          <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 font-semibold text-indigo-700">
+                            {resource.type}
+                          </span>
+                        </td>
+                        <td className="p-3.5">{resource.location}</td>
+                        <td className="p-3.5 font-mono text-slate-600">{resource.verifiedContact || resource.phone || resource.email}</td>
+                        <td className="p-3.5">{resource.availability || (resource.availableBeds > 0 ? `${resource.availableBeds} beds available` : "Available")}</td>
+                        <td className="p-3.5 text-right">
+                          {!resource.sourceModel && (
+                            <button
+                              onClick={() => handleDeleteResource(resource._id)}
+                              aria-label={`Remove ${resource.name}`}
+                              className="rounded p-1 text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredResources.length === 0 && (
+                      <tr><td colSpan="6" className="p-8 text-center text-slate-500">No directory entries found in this district.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <details className="rounded-xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer text-xs font-semibold text-indigo-700">Add a directory facility</summary>
+              <form onSubmit={handleCreateResource} className="mt-4 grid grid-cols-1 items-end gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
+                <label className="space-y-1">
+                  <span className="block font-semibold">Facility Name</span>
+                  <input required value={newResource.name} onChange={(event) => setNewResource({ ...newResource, name: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter facility name" />
+                </label>
+                <label className="space-y-1">
+                  <span className="block font-semibold">Category</span>
+                  <select value={newResource.type} onChange={(event) => setNewResource({ ...newResource, type: event.target.value })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                    {["SHELTER", "HOSPITAL", "NGO", "LAWYER", "COUNSELLING"].map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="block font-semibold">District</span>
+                  <select value={newResource.location} onChange={(event) => setNewResource({ ...newResource, location: event.target.value })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                    {DISTRICTS.map((district) => <option key={district} value={district}>{district}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="block font-semibold">Contact Phone</span>
+                  <input required value={newResource.verifiedContact} onChange={(event) => setNewResource({ ...newResource, verifiedContact: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Enter contact phone" />
+                </label>
+                <button type="submit" className="rounded-lg bg-indigo-700 px-3 py-2 font-semibold text-white hover:bg-indigo-800">Add Facility</button>
+              </form>
+            </details>
+          </section>
+        )}
+
+        {activeTab === "APPROVALS" && (
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 p-4">
+              <h2 className="text-sm font-bold text-slate-900">Organization & Lawyer Applications</h2>
+            </div>
+            {organizations.length === 0 ? (
+              <p className="p-8 text-center text-xs text-slate-500">No pending applications.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="p-3.5">Applicant / Organization</th>
                       <th className="p-3.5">Type</th>
-                      <th className="p-3.5">Location</th>
-                      <th className="p-3.5">Representative</th>
-                      <th className="p-3.5">Official Email</th>
+                      <th className="p-3.5">District</th>
+                      <th className="p-3.5">Legal Credentials</th>
+                      <th className="p-3.5">Email</th>
                       <th className="p-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {organizations.map((org) => (
-                      <tr key={org._id} className="hover:bg-slate-50/50">
-                        <td className="p-3.5 font-semibold text-slate-900">{org.organizationName}</td>
-                        <td className="p-3.5"><span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">{org.orgType}</span></td>
+                      <tr key={org._id}>
+                        <td className="p-3.5 font-semibold text-slate-900">{org.organizationName || org.name}</td>
+                        <td className="p-3.5">{org.orgType}</td>
                         <td className="p-3.5">{org.location}</td>
-                        <td className="p-3.5">{org.name}</td>
-                        <td className="p-3.5 text-slate-500 font-mono">{org.email}</td>
-                        <td className="p-3.5 text-right space-x-2">
-                          <button
-                            onClick={() => handleApproveOrg(org._id)}
-                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold cursor-pointer"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => {
-                              setRejectingOrg(org);
-                              setRejectionReason("");
-                            }}
-                            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer"
-                          >
-                            Reject
-                          </button>
+                        <td className="p-3.5 text-slate-600">
+                          {org.orgType === "LAWYER"
+                            ? `${org.barCouncilEnrollmentNumber || "Enrollment not provided"} · ${org.specialization || "Specialization not provided"}`
+                            : "—"}
+                        </td>
+                        <td className="p-3.5 text-slate-500">{org.email}</td>
+                        <td className="space-x-2 p-3.5 text-right">
+                          <button onClick={() => handleApproveOrg(org._id)} className="rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-700">Approve</button>
+                          <button onClick={() => { setRejectingOrg(org); setRejectionReason(""); }} className="rounded bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-700">Reject</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-
-            {/* Modal: Reason for Rejection */}
-            {rejectingOrg && (
-              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 border border-slate-200">
-                  <div className="flex items-center gap-2 text-rose-600">
-                    <AlertCircle className="w-5 h-5" />
-                    <h3 className="font-bold text-slate-900 text-sm">Reject Application</h3>
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Please provide the official rejection reason for <strong>{rejectingOrg.organizationName}</strong>. This feedback will be displayed to the organization upon sign-in attempt.
-                  </p>
-                  <form onSubmit={handleConfirmReject} className="space-y-3">
-                    <textarea
-                      required
-                      rows={3}
-                      placeholder="e.g. Incomplete registration credentials or unverified NGO license number."
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                    />
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setRejectingOrg(null)}
-                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-4 py-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold"
-                      >
-                        Confirm Rejection
-                      </button>
-                    </div>
-                  </form>
-                </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* TAB 3: CATEGORIZED RESOURCE MAPPING */}
-        {activeTab === "RESOURCES" && (
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">Filter by District:</span>
-                  <select
-                    value={selectedDistrict}
-                    onChange={(e) => setSelectedDistrict(e.target.value)}
-                    className="border border-slate-300 rounded px-2.5 py-1 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                  >
-                    <option value="ALL">All 10 Districts ({resources.length})</option>
-                    {["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"].map((dist) => (
-                      <option key={dist} value={dist}>{dist}</option>
-                    ))}
-                  </select>
-                </div>
-                <span className="text-xs text-slate-500">
-                  Showing <strong>{filteredResources.length}</strong> resources
-                </span>
-              </div>
-
-              {/* Add New Resource Form */}
-              <form onSubmit={handleCreateResource} className="grid grid-cols-1 sm:grid-cols-6 gap-3 text-xs items-end">
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-700">Facility Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Name"
-                    value={newResource.name}
-                    onChange={(e) => setNewResource({ ...newResource, name: e.target.value })}
-                    className="w-full border border-slate-300 rounded p-1.5 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-700">Category</label>
-                  <select
-                    value={newResource.type}
-                    onChange={(e) => setNewResource({ ...newResource, type: e.target.value })}
-                    className="w-full border border-slate-300 rounded p-1.5"
-                  >
-                    <option value="SHELTER">Shelter</option>
-                    <option value="HOSPITAL">Hospital</option>
-                    <option value="NGO">NGO Crisis Desk</option>
-                    <option value="LAWYER">Legal Aid</option>
-                    <option value="COUNSELLING">Counselling</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-700">District</label>
-                  <select
-                    value={newResource.location}
-                    onChange={(e) => setNewResource({ ...newResource, location: e.target.value })}
-                    className="w-full border border-slate-300 rounded p-1.5"
-                  >
-                    {["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"].map((dist) => (
-                      <option key={dist} value={dist}>{dist}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-700">Phone</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="+91..."
-                    value={newResource.verifiedContact}
-                    onChange={(e) => setNewResource({ ...newResource, verifiedContact: e.target.value })}
-                    className="w-full border border-slate-300 rounded p-1.5 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-700">Beds / Capacity</label>
-                  <input
-                    type="number"
-                    value={newResource.availableBeds}
-                    onChange={(e) => setNewResource({ ...newResource, availableBeds: Number(e.target.value) })}
-                    className="w-full border border-slate-300 rounded p-1.5"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded text-xs cursor-pointer"
-                >
-                  + Add Resource
-                </button>
-              </form>
-            </div>
-
-            {/* Separate Panels per Category */}
-            <div className="space-y-6">
-              {categoryGroups.map((group) => (
-                <div key={group.type} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-                  <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{group.icon}</span>
-                      <h3 className="font-bold text-slate-900 text-sm">{group.title}</h3>
-                    </div>
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${group.badgeColor}`}>
-                      {group.items.length} Facilities
-                    </span>
-                  </div>
-
-                  {group.items.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-400">
-                      No facilities found for this category in the selected district.
-                    </div>
-                  ) : (
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
-                        <tr>
-                          <th className="p-3.5">Facility Name</th>
-                          <th className="p-3.5">District</th>
-                          <th className="p-3.5">Verified Contact</th>
-                          <th className="p-3.5">Capacity / Availability</th>
-                          <th className="p-3.5">Services Provided</th>
-                          <th className="p-3.5 text-right">Delete</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {group.items.map((r) => (
-                          <tr key={r._id} className="hover:bg-slate-50/50">
-                            <td className="p-3.5 font-semibold text-slate-900">{r.name}</td>
-                            <td className="p-3.5">
-                              <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">
-                                {r.location}
-                              </span>
-                            </td>
-                            <td className="p-3.5 text-slate-600 font-mono">{r.verifiedContact}</td>
-                            <td className="p-3.5">
-                              {r.availableBeds > 0 ? (
-                                <span className="font-semibold text-emerald-700">{r.availableBeds} beds available</span>
-                              ) : (
-                                <span className="text-slate-500">Consultation / Desk</span>
-                              )}
-                            </td>
-                            <td className="p-3.5 text-slate-500 max-w-xs truncate">
-                              {r.services?.join(", ")}
-                            </td>
-                            <td className="p-3.5 text-right">
-                              <button
-                                onClick={() => handleDeleteResource(r._id)}
-                                className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          </section>
         )}
       </main>
+
+      {assigningCase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="assign-aid-title" className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="assign-aid-title" className="font-bold text-slate-900">Assign Aid to {assigningCase.caseId}</h2>
+                <p className="mt-1 text-xs text-slate-500">Available verified support in {assigningCase.location}.</p>
+              </div>
+              <button onClick={() => setAssigningCase(null)} aria-label="Close assignment dialog" className="rounded p-1 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
+              {assignableResources.map((resource) => (
+                <label key={`${resource.sourceModel || "Resource"}-${resource._id}`} className="flex cursor-pointer items-center gap-3 p-3 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedResourceIds.includes(resource._id)}
+                    onChange={() => toggleResource(resource._id)}
+                    className="accent-indigo-700"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold text-slate-900">{resource.name || resource.organizationName}</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-500">{resource.type} · {resource.verifiedContact || resource.phone || resource.email}</span>
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{resource.type}</span>
+                </label>
+              ))}
+              {assignableResources.length === 0 && <p className="p-5 text-center text-xs text-slate-500">No verified shelters, hospitals, or approved lawyers are listed in this district.</p>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setAssigningCase(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-600">Cancel</button>
+              <button
+                onClick={handleAssignResources}
+                disabled={selectedResourceIds.length === 0}
+                className="rounded-lg bg-indigo-700 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Assign Selected ({selectedResourceIds.length})
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {rejectingOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <section role="dialog" aria-modal="true" className="w-full max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-2 text-rose-600">
+              <AlertCircle className="h-5 w-5" />
+              <h2 className="text-sm font-bold text-slate-900">Reject Application</h2>
+            </div>
+            <p className="text-xs text-slate-500">Provide the official rejection reason for <strong>{rejectingOrg.organizationName || rejectingOrg.name}</strong>.</p>
+            <form onSubmit={handleConfirmReject} className="space-y-3">
+              <textarea required rows={3} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} placeholder="Enter the rejection reason" className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500" />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setRejectingOrg(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" className="rounded-lg bg-rose-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">Confirm Rejection</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

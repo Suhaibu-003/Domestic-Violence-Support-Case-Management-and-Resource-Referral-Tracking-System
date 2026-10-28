@@ -6,6 +6,22 @@ const timelineEntrySchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 
+const stageHistoryEntrySchema = new mongoose.Schema({
+  stage: { type: String, enum: ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"], required: true },
+  timestamp: { type: Date, default: Date.now },
+  updatedBy: { type: String, required: true },
+  note: { type: String, default: "" }
+}, { _id: false });
+
+const assignedResourceSchema = new mongoose.Schema({
+  resourceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    refPath: "assignedResources.resourceModel"
+  },
+  resourceModel: { type: String, enum: ["Resource", "User"], required: true }
+}, { _id: false });
+
 const caseSchema = new mongoose.Schema(
   {
     caseId: { type: String, required: true, unique: true },
@@ -16,6 +32,15 @@ const caseSchema = new mongoose.Schema(
       enum: ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"],
       default: "OPEN"
     },
+    stage: {
+      type: String,
+      enum: ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"],
+      default: function () {
+        return this.status || "OPEN";
+      }
+    },
+    stageHistory: [stageHistoryEntrySchema],
+    assignedResources: [assignedResourceSchema],
     urgency: {
       type: String,
       enum: ["IMMEDIATE", "WITHIN_24_HOURS", "GENERAL"],

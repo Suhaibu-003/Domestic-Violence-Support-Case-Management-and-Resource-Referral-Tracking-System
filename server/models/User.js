@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
       default: null
     },
     organizationName: { type: String },
+    barCouncilEnrollmentNumber: { type: String },
+    specialization: { type: String },
     location: { type: String, default: "Chennai" },
     status: {
       type: String,

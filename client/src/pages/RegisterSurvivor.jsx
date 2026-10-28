@@ -9,10 +9,15 @@ export default function RegisterSurvivor() {
     email: "",
     phone: "",
     password: "",
+    situationNote: "",
     preferredLanguage: "Tamil",
-    location: "Chennai"
+    location: ""
   });
   const navigate = useNavigate();
+  const districts = [
+    "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem",
+    "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"
+  ];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,7 +26,7 @@ export default function RegisterSurvivor() {
       if (res.data.success) {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
-        navigate("/survivor/create-case");
+        navigate("/survivor/dashboard");
       }
     } catch (err) {
       alert("Registration failed: " + (err.response?.data?.message || err.message));
@@ -51,7 +56,7 @@ export default function RegisterSurvivor() {
             <label className="block font-semibold text-slate-700 mb-1">Display Alias (Shown to Organizations)</label>
             <input
               type="text"
-              placeholder="Enter a secret nickname/alias for privacy"
+              placeholder="Enter your display alias"
               value={formData.alias}
               onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -59,12 +64,24 @@ export default function RegisterSurvivor() {
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Email or Phone</label>
+            <label className="block font-semibold text-slate-700 mb-1">Contact Email</label>
             <input
               type="email"
               required
+              placeholder="Enter your official or contact email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Phone</label>
+            <input
+              type="tel"
+              placeholder="Enter your phone number"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
             />
           </div>
@@ -74,8 +91,21 @@ export default function RegisterSurvivor() {
             <input
               type="password"
               required
+              placeholder="Enter your password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Brief Situation / Needs Note</label>
+            <textarea
+              required
+              rows={3}
+              placeholder="Enter a brief note about your current situation or urgent assistance required"
+              value={formData.situationNote}
+              onChange={(e) => setFormData({ ...formData, situationNote: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
             />
           </div>
@@ -95,12 +125,15 @@ export default function RegisterSurvivor() {
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Location</label>
-              <input
-                type="text"
+              <select
+                required
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-              />
+              >
+                <option value="" disabled>Select your district</option>
+                {districts.map((district) => <option key={district} value={district}>{district}</option>)}
+              </select>
             </div>
           </div>
 

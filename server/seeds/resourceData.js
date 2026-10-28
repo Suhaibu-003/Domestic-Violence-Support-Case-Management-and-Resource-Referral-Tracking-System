@@ -1,124 +1,58 @@
 const districts = [
-  {
-    name: "Chennai",
-    shelter: "Sakhi District Swadhar Shelter Home",
-    shelterBeds: 15,
-    hospital: "Madras Medical College Emergency Trauma Center",
-    hospitalBeds: 25
-  },
-  {
-    name: "Coimbatore",
-    shelter: "Kongu Region Emergency Transit Home for Women",
-    shelterBeds: 10,
-    hospital: "Coimbatore CMCH One-Stop Medical Examination Unit",
-    hospitalBeds: 18
-  },
-  {
-    name: "Madurai",
-    shelter: "Vaigai Annai Short-Stay Crisis Shelter",
-    shelterBeds: 12,
-    hospital: "Madurai GRH Casualty & Crisis Support Ward",
-    hospitalBeds: 20
-  },
-  {
-    name: "Tiruchirappalli",
-    shelter: "Cauvery Safe Haven Women's Hostel",
-    shelterBeds: 8,
-    hospital: "Tiruchirappalli GH Emergency Care Unit",
-    hospitalBeds: 15
-  },
-  {
-    name: "Salem",
-    shelter: "Salem Karuna Emergency Refuge Desk",
-    shelterBeds: 10,
-    hospital: "Salem Government Mohan Kumaramangalam Medical Desk",
-    hospitalBeds: 16
-  },
-  {
-    name: "Erode",
-    shelter: "Bhavani Integrated Transit Shelter",
-    shelterBeds: 8,
-    hospital: "Erode District Headquarters Hospital Trauma Desk",
-    hospitalBeds: 14
-  },
-  {
-    name: "Tirunelveli",
-    shelter: "Nellai District Magalir Protection Home",
-    shelterBeds: 10,
-    hospital: "Tirunelveli Medical College Hospital Crisis Desk",
-    hospitalBeds: 18
-  },
-  {
-    name: "Vellore",
-    shelter: "Fort City Emergency Shelter & Care Unit",
-    shelterBeds: 6,
-    hospital: "Vellore Adukkamparai Government Hospital Unit",
-    hospitalBeds: 15
-  },
-  {
-    name: "Thanjavur",
-    shelter: "Thanjai Annai Rehabilitation Sanctuary",
-    shelterBeds: 8,
-    hospital: "Thanjavur Medical College Casualty & Recovery Desk",
-    hospitalBeds: 12
-  },
-  {
-    name: "Dindigul",
-    shelter: "Dindigul Shanthi Shelter for Women & Children",
-    shelterBeds: 7,
-    hospital: "Dindigul District Head Hospital Emergency Wing",
-    hospitalBeds: 10
-  }
+  { name: "Chennai", shelter: "Sakhi Swadhar Greh Transit Home", hospital: "MMC Casualty & MLC Care Unit", beds: [15, 25] },
+  { name: "Coimbatore", shelter: "Kongu Women Protection Shelter", hospital: "Coimbatore CMCH Emergency Desk", beds: [10, 18] },
+  { name: "Madurai", shelter: "Vaigai Annai Short-Stay Crisis Shelter", hospital: "Madurai GRH Casualty Support Ward", beds: [12, 20] },
+  { name: "Tiruchirappalli", shelter: "Cauvery Safe Haven Women's Transit Home", hospital: "Trichy GH Emergency Care Unit", beds: [8, 15] },
+  { name: "Salem", shelter: "Salem Karuna Emergency Refuge Centre", hospital: "Salem Government Hospital Trauma Desk", beds: [10, 16] },
+  { name: "Erode", shelter: "Bhavani Integrated Transit Shelter", hospital: "Erode District Hospital Trauma Desk", beds: [8, 14] },
+  { name: "Tirunelveli", shelter: "Nellai Magalir Protection Home", hospital: "Tirunelveli Medical College Crisis Desk", beds: [10, 18] },
+  { name: "Vellore", shelter: "Fort City Emergency Shelter & Care Unit", hospital: "Vellore Government Hospital Emergency Unit", beds: [6, 15] },
+  { name: "Thanjavur", shelter: "Thanjai Annai Rehabilitation Sanctuary", hospital: "Thanjavur Medical College Casualty Desk", beds: [8, 12] },
+  { name: "Dindigul", shelter: "Dindigul Shanthi Shelter for Women & Children", hospital: "Dindigul District Hospital Emergency Wing", beds: [7, 10] }
 ];
 
-const districtServices = {
-  NGO: ["24/7 First Response", "Emergency Transit", "Immediate Triage"],
-  LAWYER: ["Free Legal Defense", "DV Interim Protection Orders", "Court Assistance"],
-  COUNSELLING: ["Trauma Recovery", "Crisis Psycho-Social Support", "Family Mediation"]
+const serviceByType = {
+  SHELTER: ["Safe Accommodation", "Emergency Transit", "Basic Needs Support"],
+  HOSPITAL: ["Emergency Trauma Care", "Medical Examination", "MLC Support"],
+  NGO: ["24/7 First Response", "Emergency Transit", "One Stop Centre Casework"],
+  COUNSELLING: ["Trauma Recovery", "Crisis Psycho-Social Support", "Confidential Guidance"]
 };
 
-let nextContact = 10001;
-const nextVerifiedContact = () => `+91 94440 ${String(nextContact++).padStart(5, "0")}`;
+let contactSequence = 12001;
+const nextContact = () => `+91 94440 ${String(contactSequence++).padStart(5, "0")}`;
 
-export const resourceData = districts.flatMap((district) => [
-  {
-    name: district.shelter,
-    type: "SHELTER",
+export const resourceData = districts.flatMap((district) => {
+  const facilities = [
+    {
+      name: district.shelter,
+      type: "SHELTER",
+      availableBeds: district.beds[0]
+    },
+    {
+      name: district.hospital,
+      type: "HOSPITAL",
+      availableBeds: district.beds[1]
+    },
+    {
+      name: `Sakhi One Stop Centre ${district.name}`,
+      type: "NGO",
+      availableBeds: 0
+    },
+    {
+      name: `District Mental Health Programme (DMHP) ${district.name} Guidance Desk`,
+      type: "COUNSELLING",
+      availableBeds: 0
+    }
+  ];
+
+  return facilities.map((facility) => ({
+    ...facility,
     location: district.name,
-    verifiedContact: nextVerifiedContact(),
-    availableBeds: district.shelterBeds,
-    services: ["Safe Accommodation", "Emergency Transit", "Basic Needs Support"]
-  },
-  {
-    name: district.hospital,
-    type: "HOSPITAL",
-    location: district.name,
-    verifiedContact: nextVerifiedContact(),
-    availableBeds: district.hospitalBeds,
-    services: ["Emergency Trauma Care", "Medical Examination", "MLC Support"]
-  },
-  {
-    name: "Sakhi One Stop Centre (OSC) District Cell",
-    type: "NGO",
-    location: district.name,
-    verifiedContact: nextVerifiedContact(),
-    availableBeds: 0,
-    services: districtServices.NGO
-  },
-  {
-    name: "District Legal Services Authority (DLSA) Help Desk",
-    type: "LAWYER",
-    location: district.name,
-    verifiedContact: nextVerifiedContact(),
-    availableBeds: 0,
-    services: districtServices.LAWYER
-  },
-  {
-    name: "District Mental Health Programme (DMHP) Counseling Desk",
-    type: "COUNSELLING",
-    location: district.name,
-    verifiedContact: nextVerifiedContact(),
-    availableBeds: 0,
-    services: districtServices.COUNSELLING
-  }
-]);
+    verifiedContact: nextContact(),
+    services: serviceByType[facility.type],
+    languages: ["Tamil", "English"],
+    availability: facility.type === "SHELTER" ? `${facility.availableBeds} beds available` : "Available",
+    operatingHours: "24/7 Support",
+    isVerified: true
+  }));
+});

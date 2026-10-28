@@ -36,10 +36,17 @@ router.post("/create", verifyToken, requireRoles(["SURVIVOR"]), async (req, res)
       location: location || "Chennai",
       preferredLanguage: preferredLanguage || "Tamil",
       incidentSummary,
-      timeline: [
-        { title: "Case Created", description: `Initial support requested for ${needs.join(", ")}` },
-        { title: "NGO Assigned", description: "Sakhi One Stop Centre triage desk assigned to review file" }
-      ]
+      status: "OPEN",
+      stage: "OPEN",
+      stageHistory: [{
+        stage: "OPEN",
+        updatedBy: "Survivor",
+        note: `Initial support requested for ${needs.join(", ")}`
+      }],
+      timeline: [{
+        title: "Request Received",
+        description: `Initial support requested for ${needs.join(", ")}`
+      }]
     });
 
     res.status(201).json({ success: true, data: newCase });
@@ -51,7 +58,12 @@ router.post("/create", verifyToken, requireRoles(["SURVIVOR"]), async (req, res)
 // 2. SURVIVOR: Get My Case & Active Referrals
 router.get("/my-case", verifyToken, requireRoles(["SURVIVOR"]), async (req, res) => {
   try {
-    const myCase = await Case.findOne({ survivorId: req.user.id }).sort({ createdAt: -1 });
+    const myCase = await Case.findOne({ survivorId: req.user.id })
+      .populate({
+        path: "assignedResources.resourceId",
+        select: "name organizationName orgType location phone email specialization type verifiedContact availableBeds availability isVerified"
+      })
+      .sort({ createdAt: -1 });
     if (!myCase) return res.json({ success: true, data: null });
 
     const referrals = await Referral.find({ caseId: myCase.caseId }).populate("resourceId");
@@ -114,8 +126,13 @@ router.patch("/:id/claim", verifyToken, requireRoles(["ORGANIZATION"]), async (r
     const claimedCase = await Case.findOneAndUpdate(
       caseFilter,
       {
-        $set: { status: "IN_ACTION", assignedCaseworkerId: organization._id },
+        $set: { status: "IN_ACTION", stage: "IN_ACTION", assignedCaseworkerId: organization._id },
         $push: {
+          stageHistory: {
+            stage: "IN_ACTION",
+            updatedBy: organization.organizationName || organization.name,
+            note: `${organization.orgType} support coordination started.`
+          },
           timeline: {
             title: "Organization Claimed Case",
             description: `${organization.organizationName || organization.name} began coordinating ${organization.orgType.toLowerCase()} support.`

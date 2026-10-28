@@ -10,10 +10,14 @@ export default function RegisterOrg() {
     password: "",
     orgType: "SHELTER",
     organizationName: "",
-    location: "Erode"
+    location: ""
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const districts = [
+    "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem",
+    "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"
+  ];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,7 +50,7 @@ export default function RegisterOrg() {
             <input
               type="text"
               required
-              placeholder="e.g. Hope Women Shelter"
+              placeholder="Enter your organization name"
               value={formData.organizationName}
               onChange={(e) => setFormData({ ...formData, organizationName: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -54,7 +58,7 @@ export default function RegisterOrg() {
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Organization Type</label>
+            <label className="block font-semibold text-slate-700 mb-1">Organization / Legal Aid Type</label>
             <select
               value={formData.orgType}
               onChange={(e) => setFormData({ ...formData, orgType: e.target.value })}
@@ -64,20 +68,21 @@ export default function RegisterOrg() {
               <option value="NGO">One Stop Centre / NGO Caseworker</option>
               <option value="HOSPITAL">Hospital / Emergency Healthcare</option>
               <option value="COUNSELLING">Crisis Counselling Centre</option>
-              <option value="LAWYER">Legal Aid Clinic</option>
+              <option value="LAWYER">Lawyer / Legal Aid</option>
             </select>
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Location / Hub</label>
-            <input
-              type="text"
+            <label className="block font-semibold text-slate-700 mb-1">District</label>
+            <select
               required
-              placeholder="e.g. Erode, Chennai"
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-            />
+            >
+              <option value="" disabled>Select your district</option>
+              {districts.map((district) => <option key={district} value={district}>{district}</option>)}
+            </select>
           </div>
 
           <div>
@@ -96,7 +101,7 @@ export default function RegisterOrg() {
             <label className="block font-semibold text-slate-700 mb-1">Official Contact Phone</label>
             <input
               type="text"
-              placeholder="+91 94441 11111"
+              placeholder="Enter your phone number"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -108,7 +113,7 @@ export default function RegisterOrg() {
             <input
               type="email"
               required
-              placeholder="shelter@erode.org"
+              placeholder="Enter your official or contact email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
@@ -120,7 +125,7 @@ export default function RegisterOrg() {
             <input
               type="password"
               required
-              placeholder="••••••••"
+              placeholder="Enter your password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
