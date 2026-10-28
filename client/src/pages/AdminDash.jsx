@@ -7,22 +7,53 @@ const DISTRICTS = [
   "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem",
   "Erode", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"
 ];
-const ASSIGNABLE_TYPES = ["SHELTER", "HOSPITAL", "LAWYER"];
+const ASSIGNABLE_TYPES = ["SHELTER", "HOSPITAL", "LAWYER", "NGO", "COUNSELLING"];
 const STAGES = ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"];
+const DIRECTORY_CATEGORIES = [
+  { type: "ALL", label: "All Resources" },
+  { type: "LAWYER", label: "⚖️ Lawyers / Legal Aid" },
+  { type: "HOSPITAL", label: "🏥 Hospitals & Trauma Desks" },
+  { type: "SHELTER", label: "🏠 Emergency Shelters" },
+  { type: "NGO", label: "🤝 NGOs & One-Stop Centres" },
+  { type: "COUNSELLING", label: "🧠 Counselling Centers" }
+];
+const CATEGORY_STYLES = {
+  LAWYER: "border-blue-200 bg-blue-50 text-blue-700",
+  HOSPITAL: "border-green-200 bg-green-50 text-green-700",
+  SHELTER: "border-purple-200 bg-purple-50 text-purple-700",
+  NGO: "border-amber-200 bg-amber-50 text-amber-700",
+  COUNSELLING: "border-teal-200 bg-teal-50 text-teal-700"
+};
+const CATEGORY_LABELS = {
+  LAWYER: "Lawyer / Legal Aid",
+  HOSPITAL: "Hospital",
+  SHELTER: "Emergency Shelter",
+  NGO: "NGO / One-Stop Centre",
+  COUNSELLING: "Counselling"
+};
 
 const getResourceName = (resource) => resource?.name || resource?.organizationName || "Assigned support";
+const getResourceServices = (resource) => resource.services?.length
+  ? resource.services.join(", ")
+  : resource.specialization || "Legal aid and case support";
+const getResourceAvailability = (resource) => resource.availability
+  || (resource.availableBeds > 0
+    ? `${resource.availableBeds} Beds Available`
+    : resource.type === "LAWYER" ? "Court Hours / On Call" : "On Call 24/7");
 const authConfig = () => ({
   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
 });
 
 export default function AdminDash() {
-  const [activeTab, setActiveTab] = useState("CASES");
+  const [activeTab, setActiveTab] = useState("SURVIVORS");
   const [stats, setStats] = useState({ survivors: 0, organizations: 0, pendingOrgs: 0, activeCases: 0, resources: 0 });
   const [cases, setCases] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [resources, setResources] = useState([]);
   const [selectedDistrict, setSelectedDistrict] = useState("ALL");
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [assigningCase, setAssigningCase] = useState(null);
+  const [quickAssignResource, setQuickAssignResource] = useState(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState([]);
   const [rejectingOrg, setRejectingOrg] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -78,10 +109,14 @@ export default function AdminDash() {
     };
   }, []);
 
-  const filteredResources = useMemo(() => selectedDistrict === "ALL"
-    ? resources
-    : resources.filter((resource) => resource.location?.toLowerCase() === selectedDistrict.toLowerCase()),
-  [resources, selectedDistrict]);
+  const districtResources = useMemo(() => resources.filter((resource) =>
+    resource.isVerified !== false &&
+    (selectedDistrict === "ALL" || resource.location?.toLowerCase() === selectedDistrict.toLowerCase())
+  ), [resources, selectedDistrict]);
+  const filteredResources = useMemo(() => selectedCategory === "ALL"
+    ? districtResources
+    : districtResources.filter((resource) => resource.type === selectedCategory),
+  [districtResources, selectedCategory]);
   const activeCases = useMemo(
     () => cases.filter((caseItem) => (caseItem.stage || caseItem.status) !== "RESOLVED"),
     [cases]
@@ -223,7 +258,8 @@ export default function AdminDash() {
 
         <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 text-xs font-semibold">
           {[
-            ["CASES", `Cases & Aid Directory (${activeCases.length})`],
+            ["SURVIVORS", `Manage Survivors (${cases.length})`],
+            ["AID_DIRECTORY", "Aid Directory"],
             ["APPROVALS", `Pending Approvals (${organizations.length})`]
           ].map(([tab, label]) => (
             <button
@@ -236,11 +272,11 @@ export default function AdminDash() {
           ))}
         </nav>
 
-        {activeTab === "CASES" && (
+        {activeTab === "SURVIVORS" && (
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 p-4">
-              <h2 className="text-sm font-bold text-slate-900">Active Cases & Quick Assignment</h2>
-              <p className="mt-1 text-xs text-slate-500">Assign verified district facilities or an approved pro-bono lawyer.</p>
+              <h2 className="text-sm font-bold text-slate-900">Manage Survivors & Case Progress</h2>
+              <p className="mt-1 text-xs text-slate-500">Review case stages and assign verified district aid.</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[740px] text-left text-xs">
@@ -254,7 +290,7 @@ export default function AdminDash() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {activeCases.map((item) => {
+                  {cases.map((item) => {
                     const stage = item.stage || item.status || "OPEN";
                     return (
                       <tr key={item._id} className="align-top hover:bg-slate-50/60">
@@ -289,7 +325,7 @@ export default function AdminDash() {
                       </tr>
                     );
                   })}
-                  {activeCases.length === 0 && (
+                  {cases.length === 0 && (
                     <tr><td colSpan="5" className="p-8 text-center text-slate-500">No cases are registered yet.</td></tr>
                   )}
                 </tbody>
@@ -298,72 +334,134 @@ export default function AdminDash() {
           </section>
         )}
 
-        {activeTab === "CASES" && (
+        {activeTab === "AID_DIRECTORY" && (
           <section className="space-y-4">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Unified Aid Directory</h2>
-                  <p className="mt-1 text-xs text-slate-500">Verified facilities and approved legal aid contacts.</p>
-                </div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                  District
-                  <select
-                    value={selectedDistrict}
-                    onChange={(event) => setSelectedDistrict(event.target.value)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800"
-                  >
-                    <option value="ALL">All Districts</option>
-                    {DISTRICTS.map((district) => <option key={district} value={district}>{district}</option>)}
-                  </select>
-                </label>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="p-3.5">Facility / Lawyer Name</th>
-                      <th className="p-3.5">Category</th>
-                      <th className="p-3.5">District</th>
-                      <th className="p-3.5">Contact Phone</th>
-                      <th className="p-3.5">Availability</th>
-                      <th className="p-3.5 text-right">Manage</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredResources.map((resource) => (
-                      <tr key={`${resource.sourceModel || "Resource"}-${resource._id}`} className="hover:bg-slate-50/60">
-                        <td className="p-3.5 font-semibold text-slate-900">{resource.name || resource.organizationName}</td>
-                        <td className="p-3.5">
-                          <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 font-semibold text-indigo-700">
-                            {resource.type}
-                          </span>
-                        </td>
-                        <td className="p-3.5">{resource.location}</td>
-                        <td className="p-3.5 font-mono text-slate-600">{resource.verifiedContact || resource.phone || resource.email}</td>
-                        <td className="p-3.5">{resource.availability || (resource.availableBeds > 0 ? `${resource.availableBeds} beds available` : "Available")}</td>
-                        <td className="p-3.5 text-right">
-                          {!resource.sourceModel && (
-                            <button
-                              onClick={() => handleDeleteResource(resource._id)}
-                              aria-label={`Remove ${resource.name}`}
-                              className="rounded p-1 text-rose-600 hover:bg-rose-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredResources.length === 0 && (
-                      <tr><td colSpan="6" className="p-8 text-center text-slate-500">No directory entries found in this district.</td></tr>
-                    )}
-                  </tbody>
-                </table>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-bold text-slate-900">Verified Facilities & Legal Aid</h2>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                Filter by District:
+                <select
+                  value={selectedDistrict}
+                  onChange={(event) => setSelectedDistrict(event.target.value)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700"
+                >
+                  <option value="ALL">All 10 Districts</option>
+                  {DISTRICTS.map((district) => <option key={district} value={district}>{district}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="overflow-x-auto border-b border-slate-200">
+              <div className="flex min-w-max gap-2 pb-2" role="tablist" aria-label="Aid directory categories">
+                {DIRECTORY_CATEGORIES.map((category) => {
+                  const count = category.type === "ALL"
+                    ? districtResources.length
+                    : districtResources.filter((resource) => resource.type === category.type).length;
+                  const isSelected = selectedCategory === category.type;
+                  return (
+                    <button
+                      key={category.type}
+                      type="button"
+                      role="tab"
+                      aria-selected={isSelected}
+                      onClick={() => setSelectedCategory(category.type)}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        isSelected
+                          ? "border-indigo-700 bg-indigo-700 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {category.label} ({count})
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <details className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[1250px] border-collapse text-left text-xs text-slate-700">
+                <thead className="border-b border-slate-200 bg-slate-100 text-slate-700">
+                  <tr>
+                    <th scope="col" className="whitespace-nowrap px-3 py-3">#</th>
+                    <th scope="col" className="px-3 py-3">Facility / Advocate Name</th>
+                    <th scope="col" className="px-3 py-3">Category</th>
+                    <th scope="col" className="px-3 py-3">District / City</th>
+                    <th scope="col" className="px-3 py-3">Direct Contact Phone</th>
+                    <th scope="col" className="px-3 py-3">Key Services / Specialization</th>
+                    <th scope="col" className="px-3 py-3">Availability / Capacity</th>
+                    <th scope="col" className="px-3 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResources.map((resource, index) => {
+                    const contact = resource.verifiedContact || resource.phone;
+                    const services = getResourceServices(resource);
+                    return (
+                      <tr
+                        key={`${resource.sourceModel || "Resource"}-${resource._id}`}
+                        className={`${index % 2 === 0 ? "bg-white" : "bg-slate-50"} border-b border-slate-200 hover:bg-slate-100`}
+                      >
+                        <td className="whitespace-nowrap px-3 py-3">{index + 1}</td>
+                        <td className="max-w-64 px-3 py-3">
+                          <span className="block font-bold text-slate-900">{getResourceName(resource)}</span>
+                          <span className="mt-0.5 block text-[11px] text-slate-500">
+                            {resource.specialization || services}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${CATEGORY_STYLES[resource.type] || "border-slate-200 bg-slate-100 text-slate-700"}`}>
+                            {CATEGORY_LABELS[resource.type] || resource.type}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3">{resource.location}</td>
+                        <td className="whitespace-nowrap px-3 py-3">
+                          {contact ? (
+                            <a href={`tel:${contact.replace(/[^\d+]/g, "")}`} className="font-medium text-indigo-700 hover:underline">
+                              {contact}
+                            </a>
+                          ) : (
+                            <span className="text-slate-500">Not listed</span>
+                          )}
+                        </td>
+                        <td className="max-w-72 px-3 py-3">{services}</td>
+                        <td className="whitespace-nowrap px-3 py-3">{getResourceAvailability(resource)}</td>
+                        <td className="whitespace-nowrap px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setQuickAssignResource(resource)}
+                              disabled={activeCases.length === 0}
+                              className="rounded-md bg-indigo-700 px-2.5 py-1.5 font-semibold text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Quick Assign to Case
+                            </button>
+                            {!resource.sourceModel && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteResource(resource._id)}
+                                aria-label={`Remove ${getResourceName(resource)}`}
+                                className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredResources.length === 0 && (
+                    <tr>
+                      <td colSpan="8" className="px-3 py-4 text-slate-600">
+                        No verified facilities or advocates found for this selection.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <details className="border-t border-slate-200 pt-3">
               <summary className="cursor-pointer text-xs font-semibold text-indigo-700">Add a directory facility</summary>
               <form onSubmit={handleCreateResource} className="mt-4 grid grid-cols-1 items-end gap-3 text-xs sm:grid-cols-2 lg:grid-cols-5">
                 <label className="space-y-1">
@@ -437,6 +535,49 @@ export default function AdminDash() {
           </section>
         )}
       </main>
+
+      {quickAssignResource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="quick-assign-title" className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="quick-assign-title" className="text-sm font-bold text-slate-900">Quick Assign to Case</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Select an active {quickAssignResource.location} case for {getResourceName(quickAssignResource)}.
+                </p>
+              </div>
+              <button onClick={() => setQuickAssignResource(null)} aria-label="Close quick assignment dialog" className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
+              {activeCases
+                .filter((caseItem) => caseItem.location?.toLowerCase() === quickAssignResource.location?.toLowerCase())
+                .map((caseItem) => (
+                  <button
+                    key={caseItem._id}
+                    type="button"
+                    onClick={() => {
+                      setAssigningCase(caseItem);
+                      setSelectedResourceIds([quickAssignResource._id]);
+                      setQuickAssignResource(null);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-slate-100"
+                  >
+                    <span>
+                      <span className="block text-xs font-semibold text-slate-900">{caseItem.caseId}</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500">{caseItem.needs?.join(", ") || "Support requested"}</span>
+                    </span>
+                    <span className="text-[11px] font-semibold text-indigo-700">{caseItem.stage || caseItem.status || "OPEN"}</span>
+                  </button>
+                ))}
+              {activeCases.filter((caseItem) => caseItem.location?.toLowerCase() === quickAssignResource.location?.toLowerCase()).length === 0 && (
+                <p className="px-3 py-4 text-xs text-slate-600">No active cases found in {quickAssignResource.location}.</p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {assigningCase && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
