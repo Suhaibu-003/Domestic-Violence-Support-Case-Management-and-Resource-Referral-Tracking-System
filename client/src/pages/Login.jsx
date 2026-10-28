@@ -22,13 +22,10 @@ export default function Login() {
           navigate("/admin/dashboard");
         } else if (role === "SURVIVOR") {
           navigate("/survivor/dashboard");
+        } else if (role === "ORGANIZATION") {
+          navigate("/organization/dashboard");
         } else if (role === "CASEWORKER") {
           navigate("/caseworker/dashboard");
-        } else if (role === "ORGANIZATION") {
-          const orgType = res.data.user.orgType;
-          if (orgType === "SHELTER") navigate("/shelter/dashboard");
-          else if (orgType === "LAWYER") navigate("/lawyer/dashboard");
-          else navigate("/caseworker/dashboard");
         } else {
           navigate("/caseworker/dashboard");
         }

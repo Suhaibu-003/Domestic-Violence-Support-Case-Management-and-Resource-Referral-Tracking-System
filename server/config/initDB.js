@@ -8,7 +8,7 @@ const DISTRICTS = [
   "Chennai",
   "Coimbatore",
   "Madurai",
-  "Trichy",
+  "Tiruchirappalli",
   "Salem",
   "Erode",
   "Tirunelveli",
@@ -18,141 +18,199 @@ const DISTRICTS = [
 ];
 
 const ORGANIZATION_TYPES = [
-  "SHELTER",
   "HOSPITAL",
-  "NGO",
   "LAWYER",
+  "SHELTER",
   "COUNSELLING",
   "SHELTER",
-  "HOSPITAL",
   "NGO",
+  "HOSPITAL",
   "LAWYER",
-  "COUNSELLING"
+  "COUNSELLING",
+  "NGO"
 ];
 
 const SURVIVORS = [
   {
     name: "Kavitha Selvam",
+    email: "kavitha.erode@sahaya.org",
+    password: "kavitha@2026",
     alias: "SH_Kavitha_Erode",
-    email: "kavitha.erode@sahaya-demo.org",
-    phone: "+91 98401 11001",
     location: "Erode",
     needs: ["SHELTER", "LEGAL"],
-    summary: "Urgent safe shelter and legal injunction support requested."
+    status: "RESOLVED",
+    incidentSummary: "Safe shelter allocated and legal aid confirmed.",
+    progress: [
+      ["Report Received", "Confidential report recorded."],
+      ["Caseworker Triaged", "District caseworker reviewed the support request."],
+      ["Services Dispatched", "Safe shelter allocated and legal aid confirmed."],
+      ["Resolved & Secured", "Survivor confirmed safe and case closed."]
+    ]
   },
   {
     name: "Ananya Krishnan",
+    email: "ananya.chennai@sahaya.org",
+    password: "ananya@2026",
     alias: "SH_Ananya_Chennai",
-    email: "ananya.chennai@sahaya-demo.org",
-    phone: "+91 98401 11002",
     location: "Chennai",
     needs: ["HOSPITAL", "COUNSELLING"],
-    summary: "Emergency medical examination and trauma counselling requested."
+    status: "IN_ACTION",
+    incidentSummary: "Medical examination completed; trauma counselling is ongoing.",
+    progress: [
+      ["Report Received", "Confidential report recorded."],
+      ["Caseworker Triaged", "A caseworker coordinated medical support."],
+      ["Services Dispatched", "Medical examination complete; trauma counselling ongoing."]
+    ]
   },
   {
     name: "Meenakshi Ramasamy",
+    email: "meenakshi.madurai@sahaya.org",
+    password: "meena@2026",
     alias: "SH_Meena_Madurai",
-    email: "meena.madurai@sahaya-demo.org",
-    phone: "+91 98401 11003",
     location: "Madurai",
-    needs: ["SHELTER", "HOSPITAL"],
-    summary: "Safe transit accommodation and medical support requested."
+    needs: ["SHELTER"],
+    status: "TRIAGED",
+    incidentSummary: "Shelter bed secured; transport coordination is underway.",
+    progress: [
+      ["Report Received", "Confidential report recorded."],
+      ["Caseworker Triaged", "Shelter bed locked; transport coordination underway."]
+    ]
   },
   {
     name: "Deepa Natarajan",
-    alias: "SH_Deepa_Coimbatore",
-    email: "deepa.coimbatore@sahaya-demo.org",
-    phone: "+91 98401 11004",
+    email: "deepa.cbe@sahaya.org",
+    password: "deepa@2026",
+    alias: "SH_Deepa_CBE",
     location: "Coimbatore",
-    needs: ["LAWYER"],
-    summary: "Legal assistance for protection and maintenance proceedings requested."
+    needs: ["LEGAL"],
+    status: "OPEN",
+    incidentSummary: "Freshly registered case awaiting caseworker review.",
+    progress: [["Report Received", "Freshly registered case awaiting caseworker review."]]
   },
   {
     name: "Revathi Manoharan",
+    email: "revathi.salem@sahaya.org",
+    password: "revathi@2026",
     alias: "SH_Revathi_Salem",
-    email: "revathi.salem@sahaya-demo.org",
-    phone: "+91 98401 11005",
     location: "Salem",
     needs: ["COUNSELLING", "SHELTER"],
-    summary: "Trauma counselling and safe short-term lodging requested."
+    status: "RESOLVED",
+    incidentSummary: "Rehabilitation completed; survivor confirmed safe.",
+    progress: [
+      ["Report Received", "Confidential report recorded."],
+      ["Caseworker Triaged", "Local support plan agreed with the survivor."],
+      ["Services Dispatched", "Shelter and counselling support were coordinated."],
+      ["Resolved & Secured", "Rehabilitation completed; survivor confirmed safe."]
+    ]
   }
 ];
 
+const makeTimeline = (steps) => {
+  const now = Date.now();
+  return steps.map(([title, description], index) => ({
+    title,
+    description,
+    timestamp: new Date(now - (steps.length - index - 1) * 60 * 60 * 1000)
+  }));
+};
+
 export async function autoInitializeDB() {
-  const existingAdmin = await User.findOne({ role: "ADMIN" });
-
-  if (existingAdmin) {
-    const seededResources = await Resource.find(
-      { $or: resourceData.map(({ name, location }) => ({ name, location })) },
-      { name: 1, location: 1 }
-    );
-    const seededResourceKeys = new Set(
-      seededResources.map(({ name, location }) => `${location}:${name}`)
-    );
-    const resourcesToSeed = resourceData.filter(
-      (resource) => !seededResourceKeys.has(`${resource.location}:${resource.name}`)
-    );
-
-    if (resourcesToSeed.length > 0) {
-      await Resource.insertMany(resourcesToSeed);
-    }
-
-    console.log("Database already initialized");
-    return;
-  }
-
   console.log("Initializing SAHAYA database with demo data...");
 
-  const passwordHash = await bcrypt.hash("admin123", 10);
-  await User.create({
-    name: "SAHAYA Administrator",
-    email: "admin@sahaya.org",
-    password: passwordHash,
-    role: "ADMIN",
-    status: "APPROVED",
-    location: "Chennai"
-  });
-
-  const organizationPasswordHash = await bcrypt.hash("org123", 10);
-  await User.insertMany(
-    DISTRICTS.map((district, index) => ({
-      name: `${district} ${ORGANIZATION_TYPES[index]} Support Centre`,
-      email: `demo.${district.toLowerCase()}@sahaya.org`,
-      phone: `+91 94440 ${String(index + 1).padStart(5, "0")}`,
-      password: organizationPasswordHash,
-      role: "ORGANIZATION",
-      orgType: ORGANIZATION_TYPES[index],
-      organizationName: `${district} ${ORGANIZATION_TYPES[index]} Support Centre`,
-      location: district,
-      status: "APPROVED"
-    }))
+  const adminPassword = await bcrypt.hash("admin123", 10);
+  await User.findOneAndUpdate(
+    { email: "admin@sahaya.org" },
+    {
+      $set: {
+        name: "SAHAYA Administrator",
+        email: "admin@sahaya.org",
+        password: adminPassword,
+        role: "ADMIN",
+        status: "APPROVED",
+        location: "Chennai"
+      }
+    },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
   );
 
-  await Resource.insertMany(resourceData);
-
-  const survivorPasswordHash = await bcrypt.hash("survivor123", 10);
-  const survivors = await User.insertMany(
-    SURVIVORS.map((survivor) => ({
-      ...survivor,
-      password: survivorPasswordHash,
-      role: "SURVIVOR",
-      status: "APPROVED",
-      preferredLanguage: "Tamil"
-    }))
+  const organizationPassword = await bcrypt.hash("org@2026", 10);
+  await Promise.all(
+    DISTRICTS.map(async (district, index) => {
+      const orgType = ORGANIZATION_TYPES[index];
+      const organizationName = `${district} ${orgType} Support Centre`;
+      await User.findOneAndUpdate(
+        { email: `demo.${district.toLowerCase()}@sahaya.org` },
+        {
+          $set: {
+            name: `${district} Support Coordinator`,
+            email: `demo.${district.toLowerCase()}@sahaya.org`,
+            phone: `+91 94440 ${String(index + 1).padStart(5, "0")}`,
+            password: organizationPassword,
+            role: "ORGANIZATION",
+            orgType,
+            organizationName,
+            location: district,
+            status: "APPROVED"
+          }
+        },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+      );
+    })
   );
 
-  await Case.insertMany(
-    survivors.map((survivor, index) => ({
-      caseId: `SH-2026-${String(index + 1).padStart(3, "0")}`,
-      survivorId: survivor._id,
-      urgency: index === 0 || index === 2 ? "IMMEDIATE" : "WITHIN_24_HOURS",
-      needs: SURVIVORS[index].needs,
-      location: SURVIVORS[index].location,
-      preferredLanguage: "Tamil",
-      incidentSummary: SURVIVORS[index].summary,
-      status: "OPEN"
-    }))
+  const survivorPasswordHashes = await Promise.all(
+    SURVIVORS.map(({ password }) => bcrypt.hash(password, 10))
+  );
+  const survivorUsers = await Promise.all(
+    SURVIVORS.map(async (survivor, index) => User.findOneAndUpdate(
+      { email: survivor.email },
+      {
+        $set: {
+          name: survivor.name,
+          alias: survivor.alias,
+          email: survivor.email,
+          password: survivorPasswordHashes[index],
+          role: "SURVIVOR",
+          location: survivor.location,
+          status: "APPROVED"
+        }
+      },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    ))
   );
 
-  console.log("SAHAYA database initialized with admin, organizations, resources, survivors, and cases");
+  await Promise.all(
+    SURVIVORS.map((survivor, index) => Case.findOneAndUpdate(
+      { caseId: `SH-DEMO-${String(index + 1).padStart(3, "0")}` },
+      {
+        $set: {
+          caseId: `SH-DEMO-${String(index + 1).padStart(3, "0")}`,
+          survivorId: survivorUsers[index]._id,
+          assignedCaseworkerId: null,
+          urgency: "IMMEDIATE",
+          needs: survivor.needs,
+          location: survivor.location,
+          preferredLanguage: "Tamil",
+          incidentSummary: survivor.incidentSummary,
+          status: survivor.status,
+          timeline: makeTimeline(survivor.progress)
+        }
+      },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    ))
+  );
+
+  const existingResources = await Resource.find(
+    { $or: resourceData.map(({ name, location }) => ({ name, location })) },
+    { name: 1, location: 1 }
+  );
+  const existingResourceKeys = new Set(
+    existingResources.map(({ name, location }) => `${location}:${name}`)
+  );
+  const resourcesToSeed = resourceData.filter(
+    (resource) => !existingResourceKeys.has(`${resource.location}:${resource.name}`)
+  );
+  if (resourcesToSeed.length > 0) await Resource.insertMany(resourcesToSeed);
+
+  console.log("SAHAYA database initialized with admin, 10 organizations, resources, and 5 survivor cases");
 }

@@ -44,14 +44,32 @@ router.get("/survivors", async (req, res) => {
 
 router.patch("/cases/:id/status", async (req, res) => {
   try {
-    const updated = await Case.findByIdAndUpdate(
-      req.params.id,
-      { status: req.body.status },
-      { new: true }
-    );
+    const allowedStatuses = ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"];
+    const { status } = req.body;
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid case status" });
+    }
+
+    const currentCase = await Case.findById(req.params.id);
+    if (!currentCase) {
+      return res.status(404).json({ success: false, message: "Case not found" });
+    }
+
+    const statusDescriptions = {
+      OPEN: "Case is awaiting caseworker review.",
+      TRIAGED: "Case has been reviewed and assigned for support.",
+      IN_ACTION: "Support services are actively being coordinated.",
+      RESOLVED: "Case has been resolved and marked secure."
+    };
+    currentCase.status = status;
+    currentCase.timeline.push({
+      title: `Case status updated to ${status}`,
+      description: statusDescriptions[status]
+    });
+    const updated = await currentCase.save();
     res.json({ success: true, data: updated });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 

@@ -13,8 +13,8 @@ const caseSchema = new mongoose.Schema(
     assignedCaseworkerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     status: {
       type: String,
-      enum: ["OPEN", "NEW", "ASSIGNED", "ACTIVE", "RESOLVED"],
-      default: "NEW"
+      enum: ["OPEN", "TRIAGED", "IN_ACTION", "RESOLVED"],
+      default: "OPEN"
     },
     urgency: {
       type: String,

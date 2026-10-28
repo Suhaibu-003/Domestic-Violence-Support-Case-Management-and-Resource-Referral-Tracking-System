@@ -10,6 +10,7 @@ import CreateCase from "./pages/CreateCase";
 import CaseworkerDash from "./pages/CaseworkerDash";
 import ShelterDash from "./pages/ShelterDash";
 import LawyerDash from "./pages/LawyerDash";
+import OrgDash from "./pages/OrgDash";
 
 function ProtectedRoute({ children, allowedRoles }) {
   const token = localStorage.getItem("token");
@@ -58,6 +59,14 @@ export default function App() {
         />
 
         {/* 3. ORGANIZATION WORKSPACES */}
+        <Route
+          path="/organization/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["ORGANIZATION"]}>
+              <OrgDash />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/caseworker/dashboard"
           element={

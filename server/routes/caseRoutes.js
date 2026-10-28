@@ -2,9 +2,24 @@ import express from "express";
 import Case from "../models/Case.js";
 import Resource from "../models/Resource.js";
 import Referral from "../models/Referral.js";
+import User from "../models/User.js";
 import { verifyToken, requireRoles } from "../middleware/auth.js";
 
 const router = express.Router();
+
+const getOrganizationForRequest = async (req) => User.findOne({
+  _id: req.user.id,
+  role: "ORGANIZATION",
+  status: "APPROVED"
+});
+
+const needsForOrganizationType = {
+  SHELTER: ["SHELTER"],
+  HOSPITAL: ["HOSPITAL", "MEDICAL"],
+  NGO: null,
+  LAWYER: ["LEGAL", "LAWYER"],
+  COUNSELLING: ["COUNSELLING"]
+};
 
 // 1. SURVIVOR: Create Case
 router.post("/create", verifyToken, requireRoles(["SURVIVOR"]), async (req, res) => {
@@ -41,6 +56,79 @@ router.get("/my-case", verifyToken, requireRoles(["SURVIVOR"]), async (req, res)
 
     const referrals = await Referral.find({ caseId: myCase.caseId }).populate("resourceId");
     res.json({ success: true, data: myCase, referrals });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2A. ORGANIZATION: Local case intake queue filtered by district and specialization.
+router.get("/org-queue", verifyToken, requireRoles(["ORGANIZATION"]), async (req, res) => {
+  try {
+    const organization = await getOrganizationForRequest(req);
+    if (!organization) {
+      return res.status(403).json({ success: false, message: "Approved organization account required" });
+    }
+
+    const matchingNeeds = needsForOrganizationType[organization.orgType];
+    if (matchingNeeds === undefined) {
+      return res.status(400).json({ success: false, message: "Organization type is not supported" });
+    }
+
+    const filter = {
+      location: organization.location,
+      status: { $in: ["OPEN", "TRIAGED"] },
+      assignedCaseworkerId: null
+    };
+    if (matchingNeeds) filter.needs = { $in: matchingNeeds };
+
+    const cases = await Case.find(filter)
+      .populate("survivorId", "alias")
+      .sort({ createdAt: 1 });
+    res.json({ success: true, data: cases, organization: { name: organization.organizationName, location: organization.location, orgType: organization.orgType } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2B. ORGANIZATION: Claim a matching local case and begin service coordination.
+router.patch("/:id/claim", verifyToken, requireRoles(["ORGANIZATION"]), async (req, res) => {
+  try {
+    const organization = await getOrganizationForRequest(req);
+    if (!organization) {
+      return res.status(403).json({ success: false, message: "Approved organization account required" });
+    }
+
+    const matchingNeeds = needsForOrganizationType[organization.orgType];
+    if (matchingNeeds === undefined) {
+      return res.status(400).json({ success: false, message: "Organization type is not supported" });
+    }
+
+    const caseFilter = {
+      _id: req.params.id,
+      location: organization.location,
+      status: { $in: ["OPEN", "TRIAGED"] },
+      assignedCaseworkerId: null
+    };
+    if (matchingNeeds) caseFilter.needs = { $in: matchingNeeds };
+
+    const claimedCase = await Case.findOneAndUpdate(
+      caseFilter,
+      {
+        $set: { status: "IN_ACTION", assignedCaseworkerId: organization._id },
+        $push: {
+          timeline: {
+            title: "Organization Claimed Case",
+            description: `${organization.organizationName || organization.name} began coordinating ${organization.orgType.toLowerCase()} support.`
+          }
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!claimedCase) {
+      return res.status(409).json({ success: false, message: "Case is unavailable or does not match your district and specialization" });
+    }
+    res.json({ success: true, data: claimedCase });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

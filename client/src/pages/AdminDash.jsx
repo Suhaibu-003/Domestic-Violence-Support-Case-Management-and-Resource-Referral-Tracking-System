@@ -87,6 +87,22 @@ export default function AdminDash() {
     }
   };
 
+  const handleCaseStatusChange = async (caseId, status) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await axios.patch(
+        `http://localhost:5000/api/admin/cases/${caseId}/status`,
+        { status },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSurvivors((current) => current.map((item) => item._id === caseId
+        ? { ...res.data.data, survivorId: item.survivorId }
+        : item));
+    } catch (err) {
+      alert("Case status update failed: " + (err.response?.data?.message || err.message));
+    }
+  };
+
   const handleConfirmReject = async (e) => {
     e.preventDefault();
     if (!rejectionReason.trim()) {
@@ -189,6 +205,18 @@ export default function AdminDash() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2" aria-label="Cases by district">
+          <span className="text-xs font-semibold text-slate-600">District case tally:</span>
+          {["Chennai", "Coimbatore", "Erode", "Madurai", "Salem", "Tiruchirappalli", "Tirunelveli", "Vellore", "Thanjavur", "Dindigul"].map((district) => {
+            const count = survivors.filter((item) => item.location?.toLowerCase() === district.toLowerCase()).length;
+            return (
+              <span key={district} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-[11px] text-slate-700">
+                {district}: <strong>{count}</strong>
+              </span>
+            );
+          })}
+        </div>
+
         {/* Tab Switcher */}
         <div className="flex gap-2 border-b border-slate-200 pb-2 text-xs font-semibold">
           <button
@@ -232,9 +260,17 @@ export default function AdminDash() {
                     <td className="p-3.5">{c.location}</td>
                     <td className="p-3.5">{c.needs?.join(", ")}</td>
                     <td className="p-3.5">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        {c.status}
-                      </span>
+                      <select
+                        value={c.status}
+                        onChange={(e) => handleCaseStatusChange(c._id, e.target.value)}
+                        aria-label={`Update status for ${c.caseId}`}
+                        className="px-2 py-1 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                      >
+                        <option value="OPEN">OPEN</option>
+                        <option value="TRIAGED">TRIAGED</option>
+                        <option value="IN_ACTION">IN_ACTION</option>
+                        <option value="RESOLVED">RESOLVED</option>
+                      </select>
                     </td>
                   </tr>
                 ))}
