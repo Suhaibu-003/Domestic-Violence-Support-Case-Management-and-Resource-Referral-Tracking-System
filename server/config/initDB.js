@@ -5,16 +5,16 @@ import Resource from "../models/Resource.js";
 import { resourceData } from "../seeds/resourceData.js";
 
 const LAWYERS = [
-  { name: "Advocate R. Sundaram", organizationName: "DLSA Panel Counsel, Chennai High Court Bench", location: "Chennai", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/CHN/2026/001" },
-  { name: "Advocate S. Meenakshi", organizationName: "Coimbatore District Court Legal Aid", location: "Coimbatore", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/CBE/2026/002" },
-  { name: "Advocate V. Karpagam", organizationName: "Madurai High Court Legal Services Committee", location: "Madurai", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/MDU/2026/003" },
-  { name: "Advocate M. Selvaraj", organizationName: "Trichy Bar Association Pro-Bono Wing", location: "Tiruchirappalli", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/TRI/2026/004" },
-  { name: "Advocate P. Balamurugan", organizationName: "Salem District Legal Defense Clinic", location: "Salem", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/SLM/2026/005" },
-  { name: "Advocate K. Saravanan", organizationName: "Erode DLSA Women Rights Desk", location: "Erode", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/ERD/2026/006" },
-  { name: "Advocate T. Gomathi", organizationName: "Nellai District Legal Services Cell", location: "Tirunelveli", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/TNV/2026/007" },
-  { name: "Advocate N. Damodaran", organizationName: "Vellore Bar Legal Help Unit", location: "Vellore", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/VLR/2026/008" },
-  { name: "Advocate D. Rajendran", organizationName: "Thanjavur Legal Defense Panel", location: "Thanjavur", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/TNJ/2026/009" },
-  { name: "Advocate A. Fatima", organizationName: "Dindigul Pro-Bono Legal Assistance Desk", location: "Dindigul", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/DGL/2026/010" }
+  { name: "Advocate R. Sundaram", email: "sundaram.law@sahaya.org", organizationName: "DLSA Panel Counsel, Chennai High Court Bench", location: "Chennai", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/CHN/2026/001" },
+  { name: "Advocate S. Meenakshi", email: "meenakshi.law@sahaya.org", organizationName: "Coimbatore District Court Legal Aid", location: "Coimbatore", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/CBE/2026/002" },
+  { name: "Advocate V. Karpagam", email: "karpagam.law@sahaya.org", organizationName: "Madurai High Court Legal Services Committee", location: "Madurai", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/MDU/2026/003" },
+  { name: "Advocate M. Selvaraj", email: "selvaraj.law@sahaya.org", organizationName: "Trichy Bar Association Pro-Bono Wing", location: "Tiruchirappalli", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/TRI/2026/004" },
+  { name: "Advocate P. Balamurugan", email: "balamurugan.law@sahaya.org", organizationName: "Salem District Legal Defense Clinic", location: "Salem", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/SLM/2026/005" },
+  { name: "Advocate K. Saravanan", email: "saravanan.law@sahaya.org", organizationName: "Erode DLSA Women Rights Desk", location: "Erode", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/ERD/2026/006" },
+  { name: "Advocate T. Gomathi", email: "gomathi.law@sahaya.org", organizationName: "Nellai District Legal Services Cell", location: "Tirunelveli", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/TNV/2026/007" },
+  { name: "Advocate N. Damodaran", email: "damodaran.law@sahaya.org", organizationName: "Vellore Bar Legal Help Unit", location: "Vellore", specialization: "Criminal Defense", barCouncilEnrollmentNumber: "TN/VLR/2026/008" },
+  { name: "Advocate D. Rajendran", email: "rajendran.law@sahaya.org", organizationName: "Thanjavur Legal Defense Panel", location: "Thanjavur", specialization: "Domestic Violence", barCouncilEnrollmentNumber: "TN/TNJ/2026/009" },
+  { name: "Advocate A. Fatima", email: "fatima.law@sahaya.org", organizationName: "Dindigul Pro-Bono Legal Assistance Desk", location: "Dindigul", specialization: "Maintenance", barCouncilEnrollmentNumber: "TN/DGL/2026/010" }
 ];
 
 const SURVIVORS = [
@@ -45,33 +45,54 @@ const makeStageHistory = (stage) => {
 
 export async function autoInitializeDB() {
   const existingAdmin = await User.exists({ email: "admin@sahaya.org", role: "ADMIN" });
+  const lawyerPassword = await bcrypt.hash("lawyer@2026", 10);
+  await Promise.all(LAWYERS.map(async (lawyer, index) => {
+    const phone = `+91 98401 ${String(20001 + index).padStart(5, "0")}`;
+    await Promise.all([
+      User.findOneAndUpdate(
+        { email: lawyer.email },
+        {
+          $set: {
+            ...lawyer,
+            phone,
+            password: lawyerPassword,
+            role: "ORGANIZATION",
+            orgType: "LAWYER",
+            status: "APPROVED"
+          }
+        },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+      ),
+      Resource.findOneAndUpdate(
+        { name: lawyer.name, location: lawyer.location, type: "LAWYER" },
+        {
+          $set: {
+            name: lawyer.name,
+            type: "LAWYER",
+            location: lawyer.location,
+            services: [lawyer.specialization, lawyer.organizationName],
+            languages: ["Tamil", "English"],
+            availability: "Court Hours / On Call",
+            verifiedContact: phone,
+            operatingHours: "Court Hours / On Call",
+            isVerified: true
+          }
+        },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+      )
+    ]);
+  }));
+
   if (existingAdmin) {
-    console.log("SAHAYA seed skipped: admin account already exists.");
+    console.log("SAHAYA lawyer accounts and directory resources verified; other demo seeds skipped because the admin account exists.");
     return;
   }
 
   console.log("Initializing SAHAYA database with statewide demo data...");
-  const [adminPassword, lawyerPassword, survivorPassword] = await Promise.all([
+  const [adminPassword, survivorPassword] = await Promise.all([
     bcrypt.hash("admin123", 10),
-    bcrypt.hash("lawyer@2026", 10),
     bcrypt.hash("survivor@2026", 10)
   ]);
-
-  await Promise.all(LAWYERS.map((lawyer, index) => User.findOneAndUpdate(
-    { email: `lawyer.${lawyer.location.toLowerCase().replaceAll(" ", ".")}@sahaya.org` },
-    {
-      $setOnInsert: {
-        ...lawyer,
-        email: `lawyer.${lawyer.location.toLowerCase().replaceAll(" ", ".")}@sahaya.org`,
-        phone: `+91 98401 ${String(20001 + index).padStart(5, "0")}`,
-        password: lawyerPassword,
-        role: "ORGANIZATION",
-        orgType: "LAWYER",
-        status: "APPROVED"
-      }
-    },
-    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-  )));
 
   const survivorUsers = await Promise.all(SURVIVORS.map((survivor, index) => User.findOneAndUpdate(
     { email: survivor.email },
